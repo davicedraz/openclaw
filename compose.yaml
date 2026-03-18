@@ -1,0 +1,87 @@
+name: ${COMPOSE_PROJECT_NAME:-openclaw-personal-gateway}
+
+services:
+  openclaw-gateway:
+    build:
+      context: ./vendor/openclaw
+    image: ${OPENCLAW_IMAGE:-openclaw:local}
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    env_file:
+      - ./.env.local
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      TZ: ${OPENCLAW_TZ:-UTC}
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_LOG_LEVEL: ${OPENCLAW_LOG_LEVEL:-info}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+    ports:
+      - 127.0.0.1:${OPENCLAW_HOST_PORT:-18789}:18789
+      - 127.0.0.1:${OPENCLAW_BRIDGE_HOST_PORT:-18790}:18790
+    volumes:
+      - ./runtime/config:/home/node/.openclaw
+      - ./runtime/workspace:/home/node/.openclaw/workspace
+      - ./scripts:/project/scripts:ro
+    secrets:
+      - openai_api_key
+    init: true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    entrypoint:
+      - /bin/sh
+      - /project/scripts/gateway-entrypoint.sh
+
+  openclaw-cli:
+    build:
+      context: ./vendor/openclaw
+    image: ${OPENCLAW_IMAGE:-openclaw:local}
+    container_name: openclaw-cli
+    network_mode: service:openclaw-gateway
+    env_file:
+      - ./.env.local
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      BROWSER: echo
+      TZ: ${OPENCLAW_TZ:-UTC}
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_LOG_LEVEL: ${OPENCLAW_LOG_LEVEL:-info}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+    volumes:
+      - ./runtime/config:/home/node/.openclaw
+      - ./runtime/workspace:/home/node/.openclaw/workspace
+      - ./scripts:/project/scripts:ro
+    secrets:
+      - openai_api_key
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    entrypoint:
+      - /bin/sh
+      - /project/scripts/cli-entrypoint.sh
+    depends_on:
+      - openclaw-gateway
+    stdin_open: true
+    tty: true
+
+secrets:
+  openai_api_key:
+    file: ./secrets/openai_api_key.txt

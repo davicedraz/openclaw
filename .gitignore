@@ -1,0 +1,14 @@
+.DS_Store
+.env.local
+
+secrets/*
+!secrets/.gitkeep
+!secrets/README.md
+
+runtime/config/*
+!runtime/config/.gitkeep
+
+runtime/workspace/*
+!runtime/workspace/.gitkeep
+
+vendor/

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+. /project/scripts/_load-openai-secret.sh
+
+if [ "$#" -eq 0 ]; then
+  set -- --help
+fi
+
+exec node dist/index.js "$@"

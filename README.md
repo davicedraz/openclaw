@@ -1,14 +1,42 @@
 # OpenClaw Personal Gateway
 
-Scaffold inicial para rodar um gateway OpenClaw em **VM/host dedicado** com **Docker Compose**, começando por **Telegram**, com a `OPENAI_API_KEY` fora do `compose.yaml`.
+Projeto para operar um gateway OpenClaw em **VM/host dedicado** com **Docker Compose**, mantendo a `OPENAI_API_KEY` fora do `compose.yaml` e priorizando operacao local via PC antes da integracao com canais externos.
 
-## Decisoes iniciais
+## Visao geral
 
-- `Docker Compose` para subir e descer o gateway com pouco atrito.
-- `vendor/openclaw` para manter o fluxo oficial de build local do OpenClaw.
-- segredo via arquivo em `secrets/openai_api_key.txt`, montado como Docker secret.
-- `runtime/config` e `runtime/workspace` persistidos no projeto.
-- canal inicial: **Telegram**.
+Este repositorio oferece um scaffold local para:
+
+- buildar uma imagem OpenClaw a partir de `vendor/openclaw`;
+- subir o gateway com Docker Compose;
+- persistir configuracao e workspace localmente;
+- injetar a chave do provider em runtime via Docker secret;
+- operar o runtime via CLI, TUI e dashboard;
+- tratar Telegram como integracao opcional posterior.
+
+## Decisoes de arquitetura
+
+### Segredo fora do Compose
+
+A chave da OpenAI nao fica inline em `environment:`. O projeto usa:
+
+- `secrets/openai_api_key.txt`
+
+Esse arquivo e montado como Docker secret e disponibilizado no container em:
+
+- `/run/secrets/openai_api_key`
+
+### Estado persistente
+
+O OpenClaw armazena estado, sessoes e configuracoes em `~/.openclaw`. Neste projeto, esses dados sao persistidos em:
+
+- `runtime/config`
+- `runtime/workspace`
+
+Isso permite reiniciar containers sem perder o estado operacional.
+
+### Configuracao de canal em runtime
+
+O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A configuracao de canais deve ser criada pelo onboarding ou pela CLI da versao instalada e persistida em `runtime/config`.
 
 ## Estrutura
 
@@ -24,6 +52,7 @@ Scaffold inicial para rodar um gateway OpenClaw em **VM/host dedicado** com **Do
 │   ├── _load-openai-secret.sh
 │   ├── build.sh
 │   ├── cli-entrypoint.sh
+│   ├── compose.sh
 │   ├── dashboard.sh
 │   ├── docker-logs.sh
 │   ├── down.sh
@@ -41,36 +70,9 @@ Scaffold inicial para rodar um gateway OpenClaw em **VM/host dedicado** com **Do
     └── openclaw/
 ```
 
-## Por que esse desenho
-
-### 1. Segredo fora do compose
-
-Eu preferi **nao** colocar a key da OpenAI inline em `environment:` porque isso aumenta a chance de vazamento acidental.
-
-Neste scaffold, a key fica em:
-
-- `secrets/openai_api_key.txt`
-
-E o container a recebe como Docker secret em `/run/secrets/openai_api_key`.
-
-### 2. Config persistente
-
-O OpenClaw guarda estado, sessoes e configuracoes em `~/.openclaw`.  
-Aqui isso fica mapeado para:
-
-- `runtime/config`
-- `runtime/workspace`
-
-Assim fica facil subir, derrubar e inspecionar o estado local.
-
-### 3. Config de canal nao hardcoded
-
-Eu **nao** congelei um JSON de Telegram/WhatsApp neste repo porque a superficie de configuracao do OpenClaw pode evoluir.  
-Prefiro que a configuracao de canal nasca pelo onboarding/CLI da versao real instalada e caia em `runtime/config`.
-
 ## Setup rapido
 
-## 1. Preparar variaveis nao sensiveis
+### 1. Preparar variaveis nao sensiveis
 
 ```bash
 cp .env.example .env.local
@@ -85,83 +87,83 @@ Revise pelo menos:
 - `OPENCLAW_GATEWAY_BIND`
 - `OPENCLAW_LOG_LEVEL`
 
-## 2. Criar a key da OpenAI como secret file
+### 2. Criar o arquivo de secret da OpenAI
 
-Crie o arquivo:
+Crie:
 
 ```text
 secrets/openai_api_key.txt
 ```
 
-Com apenas a key em uma linha.
+O arquivo deve conter apenas a chave, em uma unica linha.
 
-## 3. Repo oficial do OpenClaw
+### 3. Verificar o vendor do OpenClaw
 
-O repo oficial ja foi trazido para:
+O projeto assume que o repositorio oficial do OpenClaw esta disponivel em:
 
 ```text
 vendor/openclaw
 ```
 
-O build usa esse repo como contexto Docker.
+O build Docker usa esse diretorio como contexto.
 
-## 4. Buildar a imagem local
+### 4. Buildar a imagem local
 
 ```bash
 ./scripts/build.sh
 ```
 
-## 5. Fazer o onboarding inicial
+### 5. Executar o onboarding inicial
 
 ```bash
 ./scripts/onboard-telegram.sh
 ```
 
-Objetivo desta etapa:
+Objetivos desta etapa:
 
-- configurar provider/model;
+- configurar provider e modelo;
 - definir autenticacao do gateway;
-- configurar Telegram primeiro;
-- deixar `dmPolicy` em modo fechado (`allowlist` ou `pairing`);
-- confirmar onde o estado ficou persistido em `runtime/config`.
+- configurar Telegram, se essa integracao for desejada agora;
+- manter `dmPolicy` em modo fechado (`allowlist` ou `pairing`);
+- confirmar onde o estado foi persistido em `runtime/config`.
 
-## 6. Subir o gateway
+### 6. Subir o gateway
 
 ```bash
 ./scripts/up.sh
 ```
 
-## 7. Ver logs
+### 7. Acompanhar logs
 
 ```bash
 ./scripts/docker-logs.sh
 ```
 
-## Fluxo operacional
+## Modelo operacional
 
-Pensa no sistema em 3 camadas:
+O runtime pode ser entendido em tres camadas:
 
 1. **Infra Docker**
-   - sobe e mantem o `openclaw-gateway`;
+   - sobe e mantem o servico `openclaw-gateway`;
    - persiste estado em `runtime/config` e `runtime/workspace`.
 2. **Gateway OpenClaw**
    - expoe a porta `18789`;
    - serve a UI web;
-   - recebe comandos do CLI/TUI;
-   - depois do onboarding, tambem fala com canais como Telegram.
-3. **Clientes de operacao**
+   - recebe comandos do CLI e da TUI;
+   - pode integrar canais externos apos o onboarding.
+3. **Clientes locais**
    - terminal local via `openclaw-cli`;
    - navegador local via dashboard/control UI;
-   - canais externos, como Telegram, quando habilitados.
+   - canais externos como Telegram, quando configurados.
 
-### O ciclo normal de uso
+### Ciclo normal de uso
 
 1. subir o gateway;
 2. checar saude e status;
-3. operar localmente pelo PC via TUI ou dashboard;
-4. depois, se quiser, usar Telegram como canal adicional.
+3. operar localmente via TUI, dashboard ou CLI;
+4. habilitar Telegram depois, se fizer sentido para o caso de uso.
 
-## Como subir e derrubar
+## Operacao basica
 
 ### Subir o gateway
 
@@ -169,41 +171,40 @@ Pensa no sistema em 3 camadas:
 ./scripts/up.sh
 ```
 
-### Ver se o container esta de pe
+### Verificar containers
 
 ```bash
 ./scripts/ps.sh
 ```
 
-### Derrubar tudo
+### Derrubar a stack
 
 ```bash
 ./scripts/down.sh
 ```
 
-## Como monitorar
+## Monitoramento
 
-### 1. Logs do container Docker
+### Logs do container Docker
 
-Esse e o nivel mais baixo de observabilidade.  
-Serve para ver startup, crash, restart loop e erros de infra.
+Camada mais baixa de observabilidade, util para startup, restart loop e erros de infraestrutura.
 
 ```bash
 ./scripts/docker-logs.sh
 ```
 
-### 2. Health do Gateway
+### Health do gateway
 
-Esse e o check rapido para saber se o Gateway esta respondendo.
+Check rapido para verificar se o gateway esta respondendo.
 
 ```bash
 ./scripts/health.sh
 ./scripts/health.sh --json
 ```
 
-### 3. Status do OpenClaw
+### Status do OpenClaw
 
-Esse e o resumo operacional mais util.
+Resumo operacional do runtime.
 
 ```bash
 ./scripts/status.sh
@@ -211,52 +212,48 @@ Esse e o resumo operacional mais util.
 ./scripts/status.sh --usage
 ```
 
-Use `status --usage` quando quiser um snapshot mais orientado a consumo/uso.
+Use `status --usage` para um snapshot mais orientado a consumo e uso.
 
-### 4. Logs via RPC do proprio OpenClaw
+### Logs via RPC do OpenClaw
 
-Depois que o Gateway estiver rodando, da para acompanhar logs pelo proprio OpenClaw,
-sem depender so do `docker logs`.
+Depois que o gateway estiver rodando, os logs tambem podem ser acompanhados via RPC.
 
 ```bash
 ./scripts/logs.sh
 ./scripts/logs.sh --json
 ```
 
-## Como usar pelo PC, sem Telegram
+## Uso local sem Telegram
 
-Voce vai ter 3 jeitos principais de operar localmente:
+O projeto oferece tres formas principais de operacao local.
 
-### 1. TUI no terminal
+### TUI no terminal
 
-Esse e o jeito mais proximo de "conversar com ele pelo terminal".
+Abre uma interface de terminal conectada ao gateway.
 
 ```bash
 ./scripts/tui.sh
 ```
 
-Esse comando abre uma interface de terminal conectada ao Gateway.
-
-Se quiser iniciar com uma mensagem:
+Exemplo com mensagem inicial:
 
 ```bash
 ./scripts/tui.sh --message "oi"
 ```
 
-Se quiser entregar respostas para um canal externo no futuro, existe `--deliver`,
-mas para uso local isso nao e necessario no comeco.
+Existe suporte a `--deliver` para cenarios com canal externo, mas isso nao e necessario para a operacao local inicial.
 
-### 2. Dashboard / Control UI no navegador
+### Dashboard / Control UI no navegador
 
-O Gateway serve a interface web na mesma porta `18789`.
+O gateway serve a interface web na porta `18789`.
 
-Depois que o gateway estiver de pe, abra no navegador do proprio PC:
+Depois que o gateway estiver de pe, abra:
 
 ```text
 http://127.0.0.1:18789/
 ```
 
-Como estamos publicando a porta apenas em loopback, isso fica acessivel localmente.
+Como a publicacao de porta ocorre apenas em loopback, o acesso fica restrito ao host local.
 
 Observacoes importantes:
 
@@ -268,7 +265,7 @@ Observacoes importantes:
 ./scripts/dashboard.sh
 ```
 
-### 3. Comandos pontuais via CLI
+### Comandos pontuais via CLI
 
 Para diagnostico e operacao:
 
@@ -286,9 +283,9 @@ Para help e descoberta:
 ./scripts/dashboard.sh --help
 ```
 
-## Scripts curtos
+## Scripts disponiveis
 
-Os wrappers abaixo existem para facilitar o uso diario e, depois, aliases no `~/.zshrc`.
+Os wrappers em `scripts/` funcionam como a interface principal do projeto.
 
 ### Infra
 
@@ -325,7 +322,7 @@ alias oc-dash='$OPENCLAW_HOME/scripts/dashboard.sh'
 alias oc-onboard='$OPENCLAW_HOME/scripts/onboard-telegram.sh'
 ```
 
-Depois o fluxo fica assim:
+Fluxo tipico com aliases:
 
 ```bash
 oc-up
@@ -336,17 +333,17 @@ oc-dash
 oc-dlogs
 ```
 
-## O que muda quando o Telegram entrar
+## Integracao com Telegram
 
-Telegram **nao** substitui o uso local pelo PC.
-
-Ele vira apenas mais um canal de entrada/saida.
+Telegram nao substitui a operacao local pelo PC. Quando habilitado, ele passa a funcionar como mais um canal de entrada e saida para o mesmo runtime.
 
 Na pratica:
 
-- voce pode continuar usando TUI e dashboard normalmente;
-- o Telegram passa a ser um jeito remoto de conversar com o mesmo runtime;
-- monitoramento e operacao continuam sendo feitos principalmente por `status`, `health`, `logs` e dashboard.
+- TUI e dashboard continuam funcionando normalmente;
+- Telegram adiciona uma interface remota para o mesmo gateway;
+- monitoramento e operacao seguem concentrados em `status`, `health`, `logs` e dashboard.
+
+Consulte [docs/telegram-onboarding.md](docs/telegram-onboarding.md) para o fluxo dedicado de onboarding.
 
 ## Comandos uteis
 
@@ -410,19 +407,22 @@ http://127.0.0.1:18789/
 ./scripts/logs.sh
 ```
 
-## Seguranca minima que eu manteria
+## Consideracoes de seguranca
 
-- comece por **Telegram**, nao WhatsApp;
-- use **Project API key** separada so para esse experimento;
-- mantenha spend limit baixo;
-- nao jogue segredos brutos na conversa sem necessidade;
-- trate `runtime/config` como sensivel;
-- prefira VM/host dedicado;
-- publique as portas so em `127.0.0.1`.
+Minimos recomendados para operacao local:
 
-## Proximos passos naturais
+- usar uma Project API key separada para este ambiente;
+- manter spend limit baixo;
+- nao colocar segredos diretamente em `compose.yaml` ou em conversas desnecessarias;
+- tratar `runtime/config` como sensivel;
+- preferir VM ou host dedicado;
+- publicar portas apenas em `127.0.0.1`;
+- tratar Telegram como etapa opcional, nao como requisito de bootstrap.
 
-1. buildar a imagem;
-2. fazer onboarding do Telegram;
-3. validar `/status` e `/usage full`;
-4. depois decidir se WhatsApp entra.
+## Proximos passos
+
+1. buildar a imagem local;
+2. validar health e status do gateway;
+3. concluir o onboarding do provider e, se desejado, do Telegram;
+4. testar uma conversa ponta a ponta no fluxo local;
+5. decidir se canais adicionais entram no escopo.
