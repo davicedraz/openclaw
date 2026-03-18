@@ -1,0 +1,6 @@
+services:
+  openclaw-gateway:
+    volumes:
+      - ${OPENCLAW_DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
+    group_add:
+      - "${OPENCLAW_DOCKER_GID}"

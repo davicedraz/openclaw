@@ -11,6 +11,17 @@ metadata:
 
 Implement tasks from an OpenSpec change.
 
+**Project security overlay**
+
+For this project, security and leak prevention outrank convenience. Treat secrets, auth state, runtime config, logs, diffs, and generated artifacts as potentially sensitive.
+
+- Never print or copy the contents of `secrets/openai_api_key.txt`, `OPENAI_API_KEY`, or auth material derived from `runtime/config`.
+- Prefer presence/existence checks over reading secret contents.
+- Never ask the user to paste secrets into chat; ask for paths, redacted snippets, or behavioral symptoms instead.
+- Never inline provider credentials into code, Compose env, proposals, tasks, docs, or examples.
+- Sanitize any log/output snippets before showing them to the user.
+- If you discover a credential in tracked files, diffs, or logs, stop and report it as a security issue before proceeding.
+
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
@@ -147,6 +158,9 @@ What would you like to do?
 - Update task checkbox immediately after completing each task
 - Pause on errors, blockers, or unclear requirements - don't guess
 - Use contextFiles from CLI output, don't assume specific file names
+- Do not read or print secret values unless the task explicitly requires secret plumbing and no safer check works
+- Do not copy sensitive runtime data into OpenSpec artifacts, comments, fixtures, tests, or examples
+- Call out security-impacting changes explicitly when tasks touch auth, onboarding, logs, secrets, ports, or persistence
 
 **Fluid Workflow Integration**
 

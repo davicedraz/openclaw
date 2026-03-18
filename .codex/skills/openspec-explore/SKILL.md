@@ -13,6 +13,16 @@ Enter explore mode. Think deeply. Visualize freely. Follow the conversation wher
 
 **IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first and create a change proposal. You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
 
+**Project security overlay**
+
+For this project, exploration must still minimize exposure of secrets and sensitive runtime state.
+
+- Do not open secret files or dump environment/config outputs unless there is no safer way to answer the question.
+- Prefer discussing secret flows, file paths, and trust boundaries instead of showing values or full raw configs.
+- Ask the user for redacted snippets if debug context is needed.
+- Treat logs, onboarding output, `runtime/config`, and container inspection output as potentially sensitive.
+- If exploration uncovers a leak or unsafe secret handling, surface that risk immediately even if it is slightly off the main thread.
+
 **This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
 
 ---
@@ -140,6 +150,7 @@ If the user mentions a change or you detect one is relevant:
 - Reach a conclusion
 - Stay on topic if a tangent is valuable
 - Be brief (this is thinking time)
+- Expose secrets to reason effectively
 
 ---
 

@@ -11,6 +11,15 @@ metadata:
 
 Archive a completed change in the experimental workflow.
 
+**Project security overlay**
+
+For this project, archiving must not normalize leaking sensitive implementation context.
+
+- Never include raw secrets, auth tokens, cookies, or unredacted logs in archive summaries.
+- Treat generated artifacts as public-to-teammates documentation: refer to secret paths and flows, never values.
+- Never ask the user to paste secrets to complete an archive decision; use filenames, paths, or redacted context.
+- If a change artifact accidentally captured sensitive data, stop and flag remediation before archiving.
+
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
@@ -112,3 +121,5 @@ All artifacts complete. All tasks complete.
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)
 - If delta specs exist, always run the sync assessment and show the combined summary before prompting
+- Never echo raw artifact sections if they contain or might contain sensitive data; summarize and redact instead
+- If the change introduced unsafe secret handling, mention the risk explicitly in the archive warning/summary path

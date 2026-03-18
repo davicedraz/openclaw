@@ -1,6 +1,6 @@
 ## Purpose
 
-Mapear o estado atual do projeto `openclaw-personal-gateway` como um runtime local operável, com build Docker local, segredo de provider em runtime, operação pelo PC via TUI/dashboard/CLI e Telegram tratado como etapa posterior.
+Mapear o estado atual do projeto `openclaw-personal-gateway` como um runtime local operável, com build Docker local, segredo de provider em runtime, operação pelo PC via TUI/dashboard/CLI, sandbox Docker opcional para tools e Telegram tratado como etapa posterior.
 
 ## Requirements
 
@@ -10,6 +10,7 @@ The project SHALL build a local Docker image for OpenClaw using the vendored ups
 #### Scenario: Build the local image
 - **WHEN** the operator runs `./scripts/build.sh`
 - **THEN** Docker Compose SHALL build `openclaw:local` from `vendor/openclaw`
+- **AND** it SHALL accept `OPENCLAW_INSTALL_DOCKER_CLI` as a build arg for sandbox-capable local images
 
 #### Scenario: Start the gateway locally
 - **WHEN** the operator runs `./scripts/up.sh`
@@ -29,6 +30,37 @@ The project SHALL build a local Docker image for OpenClaw using the vendored ups
 #### Scenario: Expose local-only ports
 - **WHEN** the gateway is started through the project Compose file
 - **THEN** ports `18789` and `18790` SHALL be published only on `127.0.0.1`
+
+#### Scenario: Allow local Control UI startup on non-loopback bind
+- **WHEN** the gateway runs with a non-loopback bind such as `lan`
+- **THEN** the local runtime SHALL configure `gateway.controlUi.allowedOrigins` for `http://127.0.0.1:<host-port>`
+- **AND** the gateway SHALL not fail startup only because explicit Control UI origins were missing
+
+### Requirement: Support a local Docker sandbox image for isolated tool execution
+The project SHALL support running OpenClaw with a separate locally built sandbox image while keeping `openclaw:local` as the main gateway image.
+
+#### Scenario: Build the base sandbox image
+- **WHEN** the operator runs `./scripts/build-sandbox.sh`
+- **THEN** the project SHALL build `openclaw-sandbox:bookworm-slim` from `vendor/openclaw`
+
+#### Scenario: Mount Docker socket only when sandbox mode is enabled
+- **WHEN** `OPENCLAW_SANDBOX_ENABLE=1`
+- **THEN** the project SHALL include a Compose overlay that mounts the Docker socket into `openclaw-gateway`
+- **AND** it SHALL pass through the socket GID for container access
+
+#### Scenario: Apply sandbox runtime configuration through a wrapper
+- **WHEN** the operator runs `./scripts/sandbox-enable.sh`
+- **THEN** the project SHALL configure sandbox mode as `all`
+- **AND** it SHALL configure sandbox scope as `agent`
+- **AND** it SHALL configure workspace access as `rw`
+- **AND** it SHALL set the sandbox Docker image to `openclaw-sandbox:bookworm-slim`
+- **AND** it SHALL set `gateway.controlUi.allowedOrigins` to the local loopback origin for the configured host port
+- **AND** it SHALL disable elevated tool execution
+- **AND** it SHALL deny `exec`
+
+#### Scenario: Inspect the effective sandbox configuration
+- **WHEN** the operator runs `./scripts/sandbox-explain.sh`
+- **THEN** the project SHALL run `openclaw sandbox explain` through the local CLI container
 
 ### Requirement: Load provider secrets at runtime from a local secret file
 The project SHALL inject the OpenAI provider key at container runtime instead of baking it into the image or hardcoding it in Compose environment values.
@@ -74,7 +106,7 @@ The project SHALL support operating and testing the gateway locally from the PC 
 
 #### Scenario: Provide short operator commands suitable for shell aliases
 - **WHEN** the operator wants to drive the system from any terminal
-- **THEN** the project SHALL provide short wrapper scripts for build, up, down, ps, health, status, logs, tui, dashboard, and Telegram onboarding
+- **THEN** the project SHALL provide short wrapper scripts for build, build-sandbox, sandbox-enable, sandbox-explain, up, down, ps, health, status, logs, tui, dashboard, and Telegram onboarding
 
 ### Requirement: Keep Telegram onboarding as an optional next step
 The project SHALL document Telegram as a later channel integration rather than a prerequisite for local operation.

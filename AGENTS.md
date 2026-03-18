@@ -62,7 +62,13 @@ Leia nesta ordem e pare assim que tiver contexto suficiente:
 - `scripts/compose.sh`
 - `scripts/gateway-entrypoint.sh`
 - `scripts/_load-openai-secret.sh`
+
+## Arquivos sensiveis
+
 - `secrets/openai_api_key.txt`
+  - nao ler por padrao
+  - nao imprimir conteudo
+  - so validar via metadados ou checks indiretos quando a tarefa exigir
 
 ## Invariantes importantes
 
@@ -71,6 +77,40 @@ Leia nesta ordem e pare assim que tiver contexto suficiente:
 - Nao assuma que mudar `secrets/openai_api_key.txt` exige rebuild. So precisa reiniciar os containers.
 - Nao refatore `vendor/openclaw` sem necessidade clara. Esse repo foi trazido para manter proximidade com o fluxo oficial.
 - Nao reabra exploracao ampla do repo se a task puder ser resolvida lendo o spec + README.
+
+## Prioridade maxima: seguranca e prevencao de leaks
+
+Neste projeto, seguranca operacional e evitar vazamento de segredos tem prioridade acima de conveniencia, velocidade ou verbosidade de debug.
+
+Assuma sempre que qualquer agent, subagent, skill, log, diff, screenshot, comando de shell, artefato OpenSpec ou resposta ao usuario pode vazar informacao sensivel se voce nao for deliberado.
+
+### O que tratar como sensivel por padrao
+
+- `secrets/openai_api_key.txt`
+- qualquer valor de `OPENAI_API_KEY`
+- arquivos em `runtime/config` que possam conter auth, tokens, pairing, session state ou credenciais
+- output de onboarding, `docker logs`, `docker inspect`, `env`, `printenv`, traces e stack traces que possam ecoar secrets
+- exemplos, snippets, diffs e artefatos gerados a partir de arquivos sensiveis
+
+### Regras obrigatorias para qualquer agente
+
+- Nunca exiba, cole, resuma literalmente ou repita o valor de nenhum secret, token, cookie, header de auth, QR payload ou credencial.
+- Nunca peca ao usuario para colar secrets, tokens, cookies, QR payloads ou credenciais no chat. Peca path, nome da variavel, comportamento observado ou snippet redigido.
+- Nunca use `cat`, `sed`, `awk`, `rg`, `jq`, `docker inspect`, `env` ou equivalente para despejar conteudo de arquivos/variaveis sensiveis sem necessidade critica e explicita.
+- Quando precisar validar um secret, prefira checagens de presenca, tamanho, permissao, hash parcial irreversivel ou estado (`test -s`, `wc -c`, existencia do arquivo) em vez de ler o conteudo.
+- Quando logs forem necessarios para debug, inspecione e compartilhe apenas trechos minimos e sempre redigidos.
+- Nunca mova secrets para codigo versionado, `compose.yaml`, `.env`, fixtures, testes, propostas, designs, tasks ou exemplos.
+- Nunca crie artefatos que copiem credenciais reais, mesmo "temporariamente".
+- Se encontrar credencial em arquivo versionado, diff, log ou output nao redigido, pare, sinalize o risco e trate a remediacao como prioridade.
+- Em caso de duvida entre observar mais contexto ou reduzir superficie de exposicao, escolha reduzir superficie de exposicao.
+
+### Como operar com seguranca neste repo
+
+- Prefira citar caminhos e fluxos (`secrets/openai_api_key.txt`, `/run/secrets/openai_api_key`) sem abrir o conteudo.
+- Prefira descrever estrutura e comportamento de `runtime/config` sem imprimir arquivos internos, a menos que a tarefa dependa disso.
+- Ao pedir ajuda ao usuario, peca snippets redigidos, nunca secrets brutos.
+- Ao revisar mudancas, procure explicitamente por inline secrets, vazamento em logs, broadening de portas, permissoes excessivas e persistencia indevida de credenciais.
+- Antes de finalizar qualquer tarefa que toque runtime, onboarding, logs, compose, scripts ou docs operacionais, faca um cheque mental: "isso aumenta risco de leak ou normaliza pratica insegura?".
 
 ## Como operar rapidamente
 
@@ -137,6 +177,14 @@ Antes de propor qualquer mudanca, assuma este fluxo:
 2. entender o fluxo operacional pelo README
 3. mudar o minimo que resolve
 4. preservar o desenho atual: local-first, secrets em runtime, Telegram como etapa posterior
+5. preservar e reforcar o modelo de seguranca: segredo fora do versionamento e fora de outputs
+
+## Checklist obrigatorio antes de dizer "pronto"
+
+- verifique se nenhum secret real foi exposto na resposta, em snippets, em exemplos ou em artefatos gerados
+- verifique se nenhuma sugestao incentiva colocar `OPENAI_API_KEY` inline, commitar secrets ou abrir portas alem do necessario
+- verifique se logs, comandos e passos de validacao podem ser executados de forma redigida/minima
+- se algo nao foi verificado para evitar ler material sensivel, diga isso explicitamente e explique a verificacao segura recomendada
 
 Se precisar resumir o projeto em uma frase:
 

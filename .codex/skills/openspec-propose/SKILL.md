@@ -18,6 +18,16 @@ I'll create a change with artifacts:
 
 When ready to implement, run /opsx:apply
 
+**Project security overlay**
+
+For this project, proposals, designs, and task lists must reinforce secure handling of secrets by default.
+
+- Never place real secrets, tokens, auth headers, QR payloads, or copied runtime config into proposal/design/tasks artifacts.
+- Describe secret handling by reference to paths, runtime injection, redaction strategy, and verification steps.
+- Never ask the user to paste a secret for proposal authoring; ask for the integration surface, variable name, or expected runtime flow.
+- Prefer designs that keep provider credentials out of source control, Compose env blocks, and persistent logs.
+- If the requested change would weaken secret hygiene or increase leak risk, call that out explicitly in the artifacts and recommend the safer alternative.
+
 ---
 
 **Input**: The user's request should include a change name (kebab-case) OR a description of what they want to build.
@@ -108,3 +118,5 @@ After completing all artifacts, summarize:
 - If context is critically unclear, ask the user - but prefer making reasonable decisions to keep momentum
 - If a change with that name already exists, ask if user wants to continue it or create a new one
 - Verify each artifact file exists after writing before proceeding to next
+- Do not capture sensitive values from the repo, terminal, or user messages into generated artifacts
+- Include security constraints explicitly when the change touches onboarding, auth, logs, runtime state, secrets, or network exposure

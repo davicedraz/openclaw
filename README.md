@@ -7,6 +7,7 @@ Projeto para operar um gateway OpenClaw em **VM/host dedicado** com **Docker Com
 Este repositorio oferece um scaffold local para:
 
 - buildar uma imagem OpenClaw a partir de `vendor/openclaw`;
+- opcionalmente buildar uma imagem de sandbox separada para execucao isolada de tools;
 - subir o gateway com Docker Compose;
 - persistir configuracao e workspace localmente;
 - injetar a chave do provider em runtime via Docker secret;
@@ -34,6 +35,16 @@ O OpenClaw armazena estado, sessoes e configuracoes em `~/.openclaw`. Neste proj
 
 Isso permite reiniciar containers sem perder o estado operacional.
 
+### Sandbox separado do gateway principal
+
+Quando o sandbox esta habilitado, o projeto continua usando `openclaw:local` como imagem principal do gateway.
+
+O que muda e apenas o ambiente de execucao de tools:
+
+- `openclaw:local` continua sendo o runtime principal;
+- `openclaw-sandbox:bookworm-slim` vira a imagem isolada para tools sandboxadas;
+- o gateway precisa ser buildado com Docker CLI para conseguir orquestrar os containers de sandbox.
+
 ### Configuracao de canal em runtime
 
 O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A configuracao de canais deve ser criada pelo onboarding ou pela CLI da versao instalada e persistida em `runtime/config`.
@@ -43,6 +54,7 @@ O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A co
 ```text
 .
 ├── .env.example
+├── compose.sandbox.yaml
 ├── compose.yaml
 ├── docs/
 ├── runtime/
@@ -51,6 +63,7 @@ O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A co
 ├── scripts/
 │   ├── _load-openai-secret.sh
 │   ├── build.sh
+│   ├── build-sandbox.sh
 │   ├── cli-entrypoint.sh
 │   ├── compose.sh
 │   ├── dashboard.sh
@@ -61,6 +74,8 @@ O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A co
 │   ├── logs.sh
 │   ├── onboard-telegram.sh
 │   ├── ps.sh
+│   ├── sandbox-enable.sh
+│   ├── sandbox-explain.sh
 │   ├── status.sh
 │   ├── tui.sh
 │   └── up.sh
@@ -81,6 +96,9 @@ cp .env.example .env.local
 Revise pelo menos:
 
 - `OPENCLAW_IMAGE`
+- `OPENCLAW_INSTALL_DOCKER_CLI`
+- `OPENCLAW_SANDBOX_ENABLE`
+- `OPENCLAW_SANDBOX_IMAGE`
 - `OPENCLAW_HOST_PORT`
 - `OPENCLAW_GATEWAY_PORT`
 - `OPENCLAW_BRIDGE_HOST_PORT`
@@ -113,7 +131,48 @@ O build Docker usa esse diretorio como contexto.
 ./scripts/build.sh
 ```
 
-### 5. Executar o onboarding inicial
+Com a configuracao atual de `.env.local`, esse build inclui Docker CLI dentro de `openclaw:local`, o que e necessario para o gateway criar sandboxes Docker.
+
+### 5. Buildar a imagem base de sandbox
+
+```bash
+./scripts/build-sandbox.sh
+```
+
+Esse passo builda localmente a imagem `openclaw-sandbox:bookworm-slim` a partir do vendor do OpenClaw. Ela nao substitui `openclaw:local`; ela existe para executar tools em ambiente isolado.
+
+### 6. Ativar a configuracao de sandbox no runtime
+
+```bash
+./scripts/sandbox-enable.sh
+```
+
+Esse wrapper aplica o baseline recomendado para este projeto:
+
+- `agents.defaults.sandbox.mode = "all"`
+- `agents.defaults.sandbox.scope = "agent"`
+- `agents.defaults.sandbox.workspaceAccess = "rw"`
+- `agents.defaults.sandbox.docker.image = "openclaw-sandbox:bookworm-slim"`
+- `gateway.controlUi.allowedOrigins = ["http://127.0.0.1:${OPENCLAW_HOST_PORT}"]`
+- `tools.deny = ["exec"]`
+- `tools.elevated.enabled = false`
+
+Se voce ja tiver uma policy propria em `tools.deny`, ajuste esse ponto manualmente depois do bootstrap de sandbox.
+
+Decisao atual deste scaffold:
+
+- manter o baseline conservador acima;
+- tratar este runtime primeiro como um agente pessoal focado em contexto, memoria e workspace;
+- nao liberar `exec` nem `elevated` por padrao antes de sentir falta real dessa automacao.
+
+Depois disso, o gateway precisa ser reiniciado para carregar a configuracao nova.
+
+Observacao importante:
+
+- o wrapper `./scripts/sandbox-enable.sh` pode subir temporariamente o gateway se ele ainda nao estiver em execucao, porque a CLI precisa falar com um gateway ativo para aplicar a configuracao;
+- isso nao substitui o restart final quando voce quiser garantir que o processo do gateway recarregou a configuracao persistida.
+
+### 7. Executar o onboarding inicial
 
 ```bash
 ./scripts/onboard-telegram.sh
@@ -127,13 +186,27 @@ Objetivos desta etapa:
 - manter `dmPolicy` em modo fechado (`allowlist` ou `pairing`);
 - confirmar onde o estado foi persistido em `runtime/config`.
 
-### 6. Subir o gateway
+### 8. Subir o gateway
 
 ```bash
 ./scripts/up.sh
 ```
 
-### 7. Acompanhar logs
+### 9. Validar o sandbox efetivo
+
+```bash
+./scripts/sandbox-explain.sh
+```
+
+Use esse comando para confirmar se a sessao esta realmente sandboxed, qual imagem esta em uso e como `elevated` esta sendo aplicado.
+
+Para confirmar especificamente `tools.deny = ["exec"]`, prefira inspecionar a config persistida:
+
+```bash
+./scripts/compose.sh run --rm openclaw-cli config get tools --json
+```
+
+### 10. Acompanhar logs
 
 ```bash
 ./scripts/docker-logs.sh
@@ -150,8 +223,13 @@ O runtime pode ser entendido em tres camadas:
    - expoe a porta `18789`;
    - serve a UI web;
    - recebe comandos do CLI e da TUI;
+   - quando sandbox esta habilitado, coordena containers de sandbox via Docker socket;
    - pode integrar canais externos apos o onboarding.
-3. **Clientes locais**
+3. **Sandbox de tools**
+   - executa tools em `openclaw-sandbox:bookworm-slim`;
+   - isola execucao do host principal;
+   - herda acesso ao workspace de acordo com `workspaceAccess`.
+4. **Clientes locais**
    - terminal local via `openclaw-cli`;
    - navegador local via dashboard/control UI;
    - canais externos como Telegram, quando configurados.
@@ -290,6 +368,7 @@ Os wrappers em `scripts/` funcionam como a interface principal do projeto.
 ### Infra
 
 - `./scripts/build.sh`
+- `./scripts/build-sandbox.sh`
 - `./scripts/up.sh`
 - `./scripts/down.sh`
 - `./scripts/ps.sh`
@@ -300,6 +379,8 @@ Os wrappers em `scripts/` funcionam como a interface principal do projeto.
 - `./scripts/health.sh`
 - `./scripts/status.sh`
 - `./scripts/logs.sh`
+- `./scripts/sandbox-enable.sh`
+- `./scripts/sandbox-explain.sh`
 - `./scripts/tui.sh`
 - `./scripts/dashboard.sh`
 - `./scripts/onboard-telegram.sh`
@@ -310,6 +391,7 @@ Os wrappers em `scripts/` funcionam como a interface principal do projeto.
 export OPENCLAW_HOME="$HOME/Development/openclaw-personal-gateway"
 
 alias oc-build='$OPENCLAW_HOME/scripts/build.sh'
+alias oc-build-sandbox='$OPENCLAW_HOME/scripts/build-sandbox.sh'
 alias oc-up='$OPENCLAW_HOME/scripts/up.sh'
 alias oc-down='$OPENCLAW_HOME/scripts/down.sh'
 alias oc-ps='$OPENCLAW_HOME/scripts/ps.sh'
@@ -317,6 +399,8 @@ alias oc-dlogs='$OPENCLAW_HOME/scripts/docker-logs.sh'
 alias oc-health='$OPENCLAW_HOME/scripts/health.sh'
 alias oc-status='$OPENCLAW_HOME/scripts/status.sh'
 alias oc-logs='$OPENCLAW_HOME/scripts/logs.sh'
+alias oc-sandbox-enable='$OPENCLAW_HOME/scripts/sandbox-enable.sh'
+alias oc-sandbox-explain='$OPENCLAW_HOME/scripts/sandbox-explain.sh'
 alias oc-tui='$OPENCLAW_HOME/scripts/tui.sh'
 alias oc-dash='$OPENCLAW_HOME/scripts/dashboard.sh'
 alias oc-onboard='$OPENCLAW_HOME/scripts/onboard-telegram.sh'
@@ -328,6 +412,7 @@ Fluxo tipico com aliases:
 oc-up
 oc-status --all
 oc-health --json
+oc-sandbox-explain
 oc-tui
 oc-dash
 oc-dlogs
@@ -415,14 +500,70 @@ Minimos recomendados para operacao local:
 - manter spend limit baixo;
 - nao colocar segredos diretamente em `compose.yaml` ou em conversas desnecessarias;
 - tratar `runtime/config` como sensivel;
+- tratar `runtime/workspace` como memoria privada do agente;
 - preferir VM ou host dedicado;
 - publicar portas apenas em `127.0.0.1`;
+- manter `tools.elevated.enabled = false` para este perfil;
+- negar `exec` por default quando o sandbox estiver ativo;
 - tratar Telegram como etapa opcional, nao como requisito de bootstrap.
+
+### Diferenca pratica entre gateway e sandbox
+
+- `openclaw:local` continua sendo a imagem principal do sistema.
+- `openclaw-sandbox:bookworm-slim` nao substitui o gateway; ela so executa tools isoladas.
+- sem sandbox, tools rodam no ambiente principal do gateway;
+- com sandbox, tools rodam em um container separado, enquanto memoria, sessoes e bootstrap continuam no mesmo runtime OpenClaw.
+
+### Policy atual de tools
+
+O projeto segue um baseline deliberadamente conservador:
+
+- `tools.deny = ["exec"]`
+- `tools.elevated.enabled = false`
+
+Isso significa:
+
+- o agente continua podendo trabalhar com memoria, sessoes e arquivos do workspace;
+- o agente nao pode executar shell arbitrario por default;
+- qualquer necessidade futura de automacao shell deve ser uma decisao explicita, nao um comportamento implicito.
+
+### Debug de policy e sandbox
+
+Se o agente nao conseguir executar algo por policy muito restritiva, o fluxo recomendado de debug e:
+
+1. reproduzir a tentativa;
+2. inspecionar a policy efetiva:
+
+```bash
+./scripts/sandbox-explain.sh
+```
+
+3. olhar os logs do gateway:
+
+```bash
+./scripts/docker-logs.sh
+```
+
+4. se precisar inspecionar a config persistida:
+
+```bash
+./scripts/compose.sh run --rm openclaw-cli config get tools --json
+./scripts/compose.sh run --rm openclaw-cli config get agents.defaults.sandbox --json
+```
+
+Heuristicas uteis:
+
+- se o pedido exigia shell, a primeira suspeita e `tools.deny = ["exec"]`;
+- se o pedido exigia sair do sandbox e tocar host diretamente, a primeira suspeita e `tools.elevated.enabled = false`;
+- `./scripts/sandbox-explain.sh` e a fonte mais direta para entender sandbox, imagem efetiva e gates de `elevated`;
+- `./scripts/compose.sh run --rm openclaw-cli config get tools --json` e a fonte mais confiavel para confirmar `tools.deny = ["exec"]`.
 
 ## Proximos passos
 
 1. buildar a imagem local;
-2. validar health e status do gateway;
-3. concluir o onboarding do provider e, se desejado, do Telegram;
-4. testar uma conversa ponta a ponta no fluxo local;
-5. decidir se canais adicionais entram no escopo.
+2. buildar a imagem base de sandbox;
+3. aplicar a configuracao com `./scripts/sandbox-enable.sh`;
+4. validar `./scripts/sandbox-explain.sh`;
+5. concluir o onboarding do provider e, se desejado, do Telegram;
+6. testar uma conversa ponta a ponta no fluxo local;
+7. decidir se canais adicionais entram no escopo.
