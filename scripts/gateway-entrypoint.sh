@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-. /project/scripts/_load-openai-secret.sh
+. /project/scripts/_load-runtime-secrets.sh
 
 exec node dist/index.js gateway \
   --allow-unconfigured \

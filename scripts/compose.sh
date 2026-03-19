@@ -12,6 +12,12 @@ if [ -f "$env_file" ]; then
 fi
 
 compose_files="-f $project_root/compose.yaml"
+gemini_secret_file="$project_root/secrets/gemini_api_key.txt"
+
+if [ -f "$gemini_secret_file" ]; then
+  # Mantem o caminho local-first sem regressao e so monta o secret Gemini quando o arquivo existe.
+  compose_files="$compose_files -f $project_root/compose.whatsapp-browser.yaml"
+fi
 
 if [ "${OPENCLAW_SANDBOX_ENABLE:-0}" = "1" ]; then
   socket_path="${OPENCLAW_DOCKER_SOCKET_PATH:-/var/run/docker.sock}"

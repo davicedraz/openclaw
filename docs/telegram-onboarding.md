@@ -1,6 +1,6 @@
 # Telegram Onboarding
 
-Objetivo: ligar o primeiro canal com a menor superficie de risco possivel.
+Objetivo: ligar Telegram como canal opcional, sem virar prerequisito do runtime local.
 
 ## Antes de rodar
 
@@ -25,7 +25,7 @@ Durante o onboarding:
 - escolha OpenAI como provider;
 - escolha um modelo inicial barato o suficiente para experimentacao;
 - configure autenticacao do gateway;
-- habilite Telegram primeiro;
+- habilite Telegram se este for o canal escolhido agora;
 - prefira `dmPolicy = allowlist` ou `pairing`;
 - evite grupos no primeiro momento.
 

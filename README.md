@@ -1,30 +1,39 @@
 # OpenClaw Personal Gateway
 
-Projeto para operar um gateway OpenClaw em **VM/host dedicado** com **Docker Compose**, mantendo a `OPENAI_API_KEY` fora do `compose.yaml` e priorizando operacao local via PC antes da integracao com canais externos.
+Projeto para operar um gateway OpenClaw em **VM/host dedicado** com **Docker Compose**, mantendo `OPENAI_API_KEY` e `GEMINI_API_KEY` fora do `compose.yaml` e oferecendo dois caminhos oficiais: **local-first conservador** e **WhatsApp dedicado + browser**.
 
 ## Visao geral
 
 Este repositorio oferece um scaffold local para:
 
 - buildar uma imagem OpenClaw a partir de `vendor/openclaw`;
+- opcionalmente embutir browser local gerenciado na imagem do gateway/CLI;
 - opcionalmente buildar uma imagem de sandbox separada para execucao isolada de tools;
 - subir o gateway com Docker Compose;
 - persistir configuracao e workspace localmente;
-- injetar a chave do provider em runtime via Docker secret;
+- injetar chaves de provider em runtime via Docker secret;
 - operar o runtime via CLI, TUI e dashboard;
-- tratar Telegram como integracao opcional posterior.
+- manter Telegram como integracao opcional;
+- promover um perfil oficial de **WhatsApp dedicado + browser** com baseline conservador.
 
 ## Decisoes de arquitetura
 
 ### Segredo fora do Compose
 
-A chave da OpenAI nao fica inline em `environment:`. O projeto usa:
+As chaves de provider nao ficam inline em `environment:`. O projeto usa:
 
 - `secrets/openai_api_key.txt`
+- `secrets/gemini_api_key.txt`
 
-Esse arquivo e montado como Docker secret e disponibilizado no container em:
+Esses arquivos sao disponibilizados em runtime como Docker secrets:
 
 - `/run/secrets/openai_api_key`
+- `/run/secrets/gemini_api_key`
+
+Observacao pratica:
+
+- `openai_api_key.txt` continua sendo o secret base para o provider principal;
+- `gemini_api_key.txt` e opcional e so entra no compose quando o arquivo local existe.
 
 ### Estado persistente
 
@@ -49,18 +58,25 @@ O que muda e apenas o ambiente de execucao de tools:
 
 O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A configuracao de canais deve ser criada pelo onboarding ou pela CLI da versao instalada e persistida em `runtime/config`.
 
+### Dois caminhos operacionais oficiais
+
+- **local-first conservador**: subir o gateway, operar via TUI/dashboard/CLI e adicionar Telegram depois, se fizer sentido;
+- **WhatsApp dedicado + browser**: usar numero separado, browser gerenciado pelo OpenClaw, `web_search` com Gemini, `web_fetch` habilitado, grupos allowlisted e baseline conservador sem `exec`/`elevated`.
+
 ## Estrutura
 
 ```text
 .
 ├── .env.example
 ├── compose.sandbox.yaml
+├── compose.whatsapp-browser.yaml
 ├── compose.yaml
 ├── docs/
 ├── runtime/
 │   ├── config/
 │   └── workspace/
 ├── scripts/
+│   ├── _load-runtime-secrets.sh
 │   ├── _load-openai-secret.sh
 │   ├── build.sh
 │   ├── build-sandbox.sh
@@ -72,13 +88,17 @@ O repositorio nao versiona configuracoes estaticas de Telegram ou WhatsApp. A co
 │   ├── gateway-entrypoint.sh
 │   ├── health.sh
 │   ├── logs.sh
+│   ├── onboard-runtime.sh
+│   ├── whatsapp-configure.sh
+│   ├── onboard-whatsapp.sh
 │   ├── onboard-telegram.sh
 │   ├── ps.sh
 │   ├── sandbox-enable.sh
 │   ├── sandbox-explain.sh
 │   ├── status.sh
 │   ├── tui.sh
-│   └── up.sh
+│   ├── up.sh
+│   └── whatsapp-browser-enable.sh
 ├── secrets/
 │   └── README.md
 └── vendor/
@@ -96,6 +116,7 @@ cp .env.example .env.local
 Revise pelo menos:
 
 - `OPENCLAW_IMAGE`
+- `OPENCLAW_INSTALL_BROWSER`
 - `OPENCLAW_INSTALL_DOCKER_CLI`
 - `OPENCLAW_SANDBOX_ENABLE`
 - `OPENCLAW_SANDBOX_IMAGE`
@@ -105,15 +126,21 @@ Revise pelo menos:
 - `OPENCLAW_GATEWAY_BIND`
 - `OPENCLAW_LOG_LEVEL`
 
-### 2. Criar o arquivo de secret da OpenAI
+### 2. Criar os arquivos de secret
 
 Crie:
 
 ```text
 secrets/openai_api_key.txt
+secrets/gemini_api_key.txt
 ```
 
-O arquivo deve conter apenas a chave, em uma unica linha.
+Formato esperado:
+
+- `openai_api_key.txt`: obrigatorio para o provider principal;
+- `gemini_api_key.txt`: opcional no caminho local-first, recomendado no perfil WhatsApp dedicado + browser para `web_search`.
+
+Cada arquivo deve conter apenas a chave, em uma unica linha.
 
 ### 3. Verificar o vendor do OpenClaw
 
@@ -132,6 +159,14 @@ O build Docker usa esse diretorio como contexto.
 ```
 
 Com a configuracao atual de `.env.local`, esse build inclui Docker CLI dentro de `openclaw:local`, o que e necessario para o gateway criar sandboxes Docker.
+
+Se voce for seguir o perfil **WhatsApp dedicado + browser**, ajuste antes:
+
+```bash
+OPENCLAW_INSTALL_BROWSER=1
+```
+
+Esse toggle instrui o Dockerfile do vendor a embutir Chromium/Xvfb na imagem para evitar bootstrap ad-hoc do browser em runtime.
 
 ### 5. Buildar a imagem base de sandbox
 
@@ -172,19 +207,20 @@ Observacao importante:
 - o wrapper `./scripts/sandbox-enable.sh` pode subir temporariamente o gateway se ele ainda nao estiver em execucao, porque a CLI precisa falar com um gateway ativo para aplicar a configuracao;
 - isso nao substitui o restart final quando voce quiser garantir que o processo do gateway recarregou a configuracao persistida.
 
-### 7. Executar o onboarding inicial
+### 7. Escolher o caminho operacional
 
-```bash
-./scripts/onboard-telegram.sh
-```
-
-Objetivos desta etapa:
-
-- configurar provider e modelo;
-- definir autenticacao do gateway;
-- configurar Telegram, se essa integracao for desejada agora;
-- manter `dmPolicy` em modo fechado (`allowlist` ou `pairing`);
-- confirmar onde o estado foi persistido em `runtime/config`.
+- **Local-first conservador**:
+  - rode `./scripts/onboard-runtime.sh` para configurar provider, modelo e auth do gateway;
+  - siga operando localmente por TUI/dashboard/CLI;
+  - quando quiser Telegram, rode `./scripts/onboard-telegram.sh`;
+  - guia dedicado: [docs/telegram-onboarding.md](docs/telegram-onboarding.md)
+- **WhatsApp dedicado + browser**:
+  - preencha `secrets/gemini_api_key.txt`;
+  - rode `./scripts/onboard-runtime.sh` para configurar provider, modelo e auth do gateway;
+  - aplique `./scripts/whatsapp-browser-enable.sh`;
+  - preencha allowlists e grupos com `./scripts/whatsapp-configure.sh`;
+  - faca login do canal com `./scripts/onboard-whatsapp.sh`;
+  - guia dedicado: [docs/whatsapp-dedicado-browser.md](docs/whatsapp-dedicado-browser.md)
 
 ### 8. Subir o gateway
 
@@ -232,14 +268,14 @@ O runtime pode ser entendido em tres camadas:
 4. **Clientes locais**
    - terminal local via `openclaw-cli`;
    - navegador local via dashboard/control UI;
-   - canais externos como Telegram, quando configurados.
+   - canais externos como Telegram ou WhatsApp dedicado, quando configurados.
 
 ### Ciclo normal de uso
 
 1. subir o gateway;
 2. checar saude e status;
 3. operar localmente via TUI, dashboard ou CLI;
-4. habilitar Telegram depois, se fizer sentido para o caso de uso.
+4. escolher se Telegram ou WhatsApp dedicado entram no fluxo operacional.
 
 ## Operacao basica
 
@@ -301,9 +337,17 @@ Depois que o gateway estiver rodando, os logs tambem podem ser acompanhados via 
 ./scripts/logs.sh --json
 ```
 
-## Uso local sem Telegram
+## Caminhos operacionais
+
+### Caminho 1: local-first conservador
 
 O projeto oferece tres formas principais de operacao local.
+
+Antes de usar TUI/dashboard/CLI de forma real, faca o onboarding base do runtime:
+
+```bash
+./scripts/onboard-runtime.sh
+```
 
 ### TUI no terminal
 
@@ -361,6 +405,44 @@ Para help e descoberta:
 ./scripts/dashboard.sh --help
 ```
 
+### Caminho 2: WhatsApp dedicado + browser
+
+Esse caminho sobe o mesmo runtime, mas com um baseline operacional explicito para automacao mais seria:
+
+- numero de WhatsApp separado do pessoal;
+- browser local gerenciado pelo OpenClaw com perfil `openclaw`;
+- `web_search` com Gemini e `web_fetch` mantido ligado;
+- grupos fechados por allowlist e configurados manualmente;
+- `tools.deny = ["exec"]` e `tools.elevated.enabled = false`.
+
+Antes do login do canal, faca o onboarding base do runtime para provider/modelo/auth:
+
+```bash
+./scripts/onboard-runtime.sh
+```
+
+Wrapper de baseline:
+
+```bash
+./scripts/whatsapp-browser-enable.sh
+```
+
+Wrapper guiado para allowlists e grupos:
+
+```bash
+./scripts/whatsapp-configure.sh
+```
+
+Login do canal:
+
+```bash
+./scripts/onboard-whatsapp.sh
+```
+
+Runbook completo:
+
+- [docs/whatsapp-dedicado-browser.md](docs/whatsapp-dedicado-browser.md)
+
 ## Scripts disponiveis
 
 Os wrappers em `scripts/` funcionam como a interface principal do projeto.
@@ -383,6 +465,10 @@ Os wrappers em `scripts/` funcionam como a interface principal do projeto.
 - `./scripts/sandbox-explain.sh`
 - `./scripts/tui.sh`
 - `./scripts/dashboard.sh`
+- `./scripts/onboard-runtime.sh`
+- `./scripts/whatsapp-browser-enable.sh`
+- `./scripts/whatsapp-configure.sh`
+- `./scripts/onboard-whatsapp.sh`
 - `./scripts/onboard-telegram.sh`
 
 ## Exemplo de aliases para `.zshrc`
@@ -403,7 +489,11 @@ alias oc-sandbox-enable='$OPENCLAW_HOME/scripts/sandbox-enable.sh'
 alias oc-sandbox-explain='$OPENCLAW_HOME/scripts/sandbox-explain.sh'
 alias oc-tui='$OPENCLAW_HOME/scripts/tui.sh'
 alias oc-dash='$OPENCLAW_HOME/scripts/dashboard.sh'
-alias oc-onboard='$OPENCLAW_HOME/scripts/onboard-telegram.sh'
+alias oc-onboard='$OPENCLAW_HOME/scripts/onboard-runtime.sh'
+alias oc-wa-enable='$OPENCLAW_HOME/scripts/whatsapp-browser-enable.sh'
+alias oc-wa-config='$OPENCLAW_HOME/scripts/whatsapp-configure.sh'
+alias oc-wa-login='$OPENCLAW_HOME/scripts/onboard-whatsapp.sh'
+alias oc-onboard-tg='$OPENCLAW_HOME/scripts/onboard-telegram.sh'
 ```
 
 Fluxo tipico com aliases:
@@ -418,7 +508,30 @@ oc-dash
 oc-dlogs
 ```
 
-## Integracao com Telegram
+## Perfil WhatsApp dedicado + browser
+
+Esse perfil nao substitui a operacao local pelo PC. Ele adiciona um caminho oficial para ter:
+
+- um numero dedicado de WhatsApp como superficie remota;
+- um browser separado da sua sessao pessoal;
+- Google/Gemini apenas na superficie do agente;
+- grupos sempre fechados por allowlist explicita.
+
+O fluxo recomendado e:
+
+1. `OPENCLAW_INSTALL_BROWSER=1` em `.env.local`;
+2. preencher `secrets/openai_api_key.txt` e `secrets/gemini_api_key.txt`;
+3. rebuildar com `./scripts/build.sh`;
+4. rodar `./scripts/onboard-runtime.sh` para configurar provider, modelo e auth do gateway;
+5. aplicar `./scripts/whatsapp-browser-enable.sh`;
+6. preencher `allowFrom` / `groupAllowFrom` / `groups` com `./scripts/whatsapp-configure.sh`;
+7. logar o numero dedicado com `./scripts/onboard-whatsapp.sh`.
+
+Detalhes e exemplos concretos:
+
+- [docs/whatsapp-dedicado-browser.md](docs/whatsapp-dedicado-browser.md)
+
+## Canal opcional: Telegram
 
 Telegram nao substitui a operacao local pelo PC. Quando habilitado, ele passa a funcionar como mais um canal de entrada e saida para o mesmo runtime.
 
@@ -497,6 +610,7 @@ http://127.0.0.1:18789/
 Minimos recomendados para operacao local:
 
 - usar uma Project API key separada para este ambiente;
+- usar uma chave Gemini separada se for habilitar `web_search` via Gemini;
 - manter spend limit baixo;
 - nao colocar segredos diretamente em `compose.yaml` ou em conversas desnecessarias;
 - tratar `runtime/config` como sensivel;
@@ -505,7 +619,9 @@ Minimos recomendados para operacao local:
 - publicar portas apenas em `127.0.0.1`;
 - manter `tools.elevated.enabled = false` para este perfil;
 - negar `exec` por default quando o sandbox estiver ativo;
-- tratar Telegram como etapa opcional, nao como requisito de bootstrap.
+- tratar Telegram como etapa opcional, nao como requisito de bootstrap;
+- usar numero de WhatsApp dedicado, nao o pessoal, se escolher esse canal;
+- usar conta Google dedicada dentro do browser `openclaw`, com permissoes minimas.
 
 ### Diferenca pratica entre gateway e sandbox
 
@@ -564,6 +680,6 @@ Heuristicas uteis:
 2. buildar a imagem base de sandbox;
 3. aplicar a configuracao com `./scripts/sandbox-enable.sh`;
 4. validar `./scripts/sandbox-explain.sh`;
-5. concluir o onboarding do provider e, se desejado, do Telegram;
-6. testar uma conversa ponta a ponta no fluxo local;
-7. decidir se canais adicionais entram no escopo.
+5. escolher entre local-first conservador ou WhatsApp dedicado + browser;
+6. concluir o onboarding do provider e, se desejado, do Telegram ou do WhatsApp dedicado;
+7. testar uma conversa ponta a ponta no fluxo escolhido.

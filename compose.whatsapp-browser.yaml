@@ -1,0 +1,12 @@
+services:
+  openclaw-gateway:
+    secrets:
+      - gemini_api_key
+
+  openclaw-cli:
+    secrets:
+      - gemini_api_key
+
+secrets:
+  gemini_api_key:
+    file: ./secrets/gemini_api_key.txt

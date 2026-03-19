@@ -5,6 +5,7 @@ services:
     build:
       context: ./vendor/openclaw
       args:
+        OPENCLAW_INSTALL_BROWSER: ${OPENCLAW_INSTALL_BROWSER:-}
         OPENCLAW_INSTALL_DOCKER_CLI: ${OPENCLAW_INSTALL_DOCKER_CLI:-}
     image: ${OPENCLAW_IMAGE:-openclaw:local}
     container_name: openclaw-gateway
@@ -50,6 +51,7 @@ services:
     build:
       context: ./vendor/openclaw
       args:
+        OPENCLAW_INSTALL_BROWSER: ${OPENCLAW_INSTALL_BROWSER:-}
         OPENCLAW_INSTALL_DOCKER_CLI: ${OPENCLAW_INSTALL_DOCKER_CLI:-}
     image: ${OPENCLAW_IMAGE:-openclaw:local}
     container_name: openclaw-cli

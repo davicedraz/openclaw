@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "tlc-spec-driven": {
+      "source": "tech-leads-club/agent-skills",
+      "sourceType": "github",
+      "computedHash": "eb1790043c93e47a15112d21910bcc2301dbc5e05f48e46162a4d677efab8ff4"
+    }
+  }
+}

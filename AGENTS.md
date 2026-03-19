@@ -17,51 +17,75 @@ O que ja existe e importa:
 - operacao local pelo PC ja foi preparada com wrappers curtos
 - o segredo da OpenAI entra em runtime por `secrets/openai_api_key.txt`
 - Telegram continua sendo etapa posterior, nao pre-requisito para operar localmente
-- o OpenSpec deste projeto hoje e um mapa do estado atual, nao uma change com `proposal/design/tasks`
+- `tlc-spec-driven` passou a ser o fluxo oficial deste repo via `.specs/`
 
 ## Ordem de leitura recomendada
 
 Leia nesta ordem e pare assim que tiver contexto suficiente:
 
-1. `openspec/specs/local-openclaw-gateway/spec.md`
-   - fonte mais curta e normativa sobre o que o projeto ja e hoje
+1. `.specs/project/PROJECT.md`
+   - visao, objetivos, boundaries e stack do projeto
 
-2. `README.md`
+2. `.specs/project/ROADMAP.md`
+   - milestone atual, status real e proximos passos oficiais
+
+3. `.specs/project/STATE.md`
+   - memoria viva: decisoes, blockers, lessons e TODOs
+
+4. `.specs/codebase/STRUCTURE.md`
+   - mapa rapido de onde cada coisa mora
+
+5. `.specs/codebase/ARCHITECTURE.md`
+   - fluxo operacional do scaffold e boundaries com o vendor
+
+6. `.specs/codebase/CONCERNS.md`
+   - hotspots e armadilhas para nao tocar runtime/scripts no escuro
+
+7. `README.md`
    - fonte principal de operacao
    - explica setup, fluxo de subida, monitoramento, TUI, dashboard e wrappers
 
-3. `docs/notes.md`
+8. `docs/notes.md`
    - observacoes curtas de produto/seguranca que ajudam a nao perder decisoes importantes
 
-4. `docs/telegram-onboarding.md`
+9. `docs/telegram-onboarding.md`
    - so se a tarefa envolver Telegram ou onboarding
 
-5. `compose.yaml`
+10. `docs/whatsapp-dedicado-browser.md`
+   - so se a tarefa envolver WhatsApp dedicado, browser ou `web_search`
+
+11. `compose.yaml`
    - so se a tarefa envolver runtime, portas, volumes, secrets ou servicos
 
-6. `scripts/`
+12. `scripts/`
    - so se a tarefa envolver fluxo operacional, entrypoints ou ergonomia de uso
 
-7. `secrets/README.md`
+13. `secrets/README.md`
    - so se a tarefa envolver manuseio da `OPENAI_API_KEY`
 
-8. `vendor/openclaw/`
+14. `vendor/openclaw/`
    - abrir apenas se a tarefa exigir entender comportamento upstream do OpenClaw
    - evitar explorar o repo vendorizado por padrao
 
-9. nota externa de pesquisa sobre WhatsApp/Telegram
+15. nota externa de pesquisa sobre WhatsApp/Telegram
    - usar apenas quando for importante resgatar rationale, trade-offs e pesquisa comparativa
 
 ## Arquivos centrais
 
+- `.specs/project/PROJECT.md`
+- `.specs/project/ROADMAP.md`
+- `.specs/project/STATE.md`
+- `.specs/codebase/ARCHITECTURE.md`
+- `.specs/codebase/CONCERNS.md`
 - `README.md`
 - `compose.yaml`
-- `openspec/specs/local-openclaw-gateway/spec.md`
 - `docs/telegram-onboarding.md`
+- `docs/whatsapp-dedicado-browser.md`
 - `docs/notes.md`
 - `scripts/compose.sh`
 - `scripts/gateway-entrypoint.sh`
-- `scripts/_load-openai-secret.sh`
+- `scripts/cli-entrypoint.sh`
+- `scripts/_load-runtime-secrets.sh`
 
 ## Arquivos sensiveis
 
@@ -76,13 +100,14 @@ Leia nesta ordem e pare assim que tiver contexto suficiente:
 - Nao coloque `OPENAI_API_KEY` inline em `compose.yaml`.
 - Nao assuma que mudar `secrets/openai_api_key.txt` exige rebuild. So precisa reiniciar os containers.
 - Nao refatore `vendor/openclaw` sem necessidade clara. Esse repo foi trazido para manter proximidade com o fluxo oficial.
-- Nao reabra exploracao ampla do repo se a task puder ser resolvida lendo o spec + README.
+- Novas iniciativas devem nascer em `.specs/features/` ou `.specs/quick/`.
+- Nao reabra exploracao ampla do repo se a task puder ser resolvida lendo `.specs/` + `README.md`.
 
 ## Prioridade maxima: seguranca e prevencao de leaks
 
 Neste projeto, seguranca operacional e evitar vazamento de segredos tem prioridade acima de conveniencia, velocidade ou verbosidade de debug.
 
-Assuma sempre que qualquer agent, subagent, skill, log, diff, screenshot, comando de shell, artefato OpenSpec ou resposta ao usuario pode vazar informacao sensivel se voce nao for deliberado.
+Assuma sempre que qualquer agent, subagent, skill, log, diff, screenshot, comando de shell, artefato em `.specs/` ou resposta ao usuario pode vazar informacao sensivel se voce nao for deliberado.
 
 ### O que tratar como sensivel por padrao
 
@@ -99,7 +124,7 @@ Assuma sempre que qualquer agent, subagent, skill, log, diff, screenshot, comand
 - Nunca use `cat`, `sed`, `awk`, `rg`, `jq`, `docker inspect`, `env` ou equivalente para despejar conteudo de arquivos/variaveis sensiveis sem necessidade critica e explicita.
 - Quando precisar validar um secret, prefira checagens de presenca, tamanho, permissao, hash parcial irreversivel ou estado (`test -s`, `wc -c`, existencia do arquivo) em vez de ler o conteudo.
 - Quando logs forem necessarios para debug, inspecione e compartilhe apenas trechos minimos e sempre redigidos.
-- Nunca mova secrets para codigo versionado, `compose.yaml`, `.env`, fixtures, testes, propostas, designs, tasks ou exemplos.
+- Nunca mova secrets para codigo versionado, `compose.yaml`, `.env`, fixtures, testes, artefatos em `.specs/` ou exemplos.
 - Nunca crie artefatos que copiem credenciais reais, mesmo "temporariamente".
 - Se encontrar credencial em arquivo versionado, diff, log ou output nao redigido, pare, sinalize o risco e trate a remediacao como prioridade.
 - Em caso de duvida entre observar mais contexto ou reduzir superficie de exposicao, escolha reduzir superficie de exposicao.
@@ -117,6 +142,7 @@ Assuma sempre que qualquer agent, subagent, skill, log, diff, screenshot, comand
 Os wrappers curtos em `scripts/` sao a interface principal deste scaffold:
 
 - `./scripts/build.sh`
+- `./scripts/build-sandbox.sh`
 - `./scripts/up.sh`
 - `./scripts/down.sh`
 - `./scripts/ps.sh`
@@ -126,7 +152,12 @@ Os wrappers curtos em `scripts/` sao a interface principal deste scaffold:
 - `./scripts/logs.sh`
 - `./scripts/tui.sh`
 - `./scripts/dashboard.sh`
+- `./scripts/sandbox-enable.sh`
+- `./scripts/sandbox-explain.sh`
 - `./scripts/onboard-telegram.sh`
+- `./scripts/onboard-whatsapp.sh`
+- `./scripts/whatsapp-browser-enable.sh`
+- `./scripts/whatsapp-configure.sh`
 
 Modelo mental correto:
 
@@ -143,7 +174,7 @@ Infra e operacao local:
 - compose alinhado ao fluxo oficial do OpenClaw
 - imagem local buildavel
 - wrappers curtos criados
-- OpenSpec criado como mapa do estado atual
+- `.specs/` inicializado como memoria oficial do projeto
 
 Ainda pendente para uso real com modelo:
 
@@ -157,7 +188,7 @@ Ainda pendente para uso real com modelo:
 - Sem `--allow-unconfigured`, o gateway pode entrar em restart loop antes do onboarding.
 - `onboard-telegram.sh` foi feito para falhar cedo se a key estiver vazia.
 - A build da imagem nao depende da key da OpenAI.
-- O OpenSpec CLI pode emitir erros de telemetria de rede; isso nao invalida o spec local.
+- `scripts/compose.sh` e o choke point do scaffold; qualquer mudanca nele repercute em quase todos os wrappers.
 
 ## Quando aprofundar
 
@@ -165,7 +196,7 @@ Abra o repo vendorizado do OpenClaw apenas se uma destas condicoes for verdadeir
 
 - voce precisa entender um comando/flag especifico do upstream
 - voce precisa alinhar nosso scaffold com uma mudanca recente do OpenClaw
-- voce precisa debugar um comportamento que o README e o spec nao explicam
+- voce precisa debugar um comportamento que o `README.md` e `.specs/` nao explicam
 
 Se nada disso for verdade, prefira ficar no contexto deste projeto.
 
@@ -173,11 +204,13 @@ Se nada disso for verdade, prefira ficar no contexto deste projeto.
 
 Antes de propor qualquer mudanca, assuma este fluxo:
 
-1. entender o estado atual pelo spec
-2. entender o fluxo operacional pelo README
-3. mudar o minimo que resolve
-4. preservar o desenho atual: local-first, secrets em runtime, Telegram como etapa posterior
-5. preservar e reforcar o modelo de seguranca: segredo fora do versionamento e fora de outputs
+1. entender o estado atual por `.specs/project/PROJECT.md`, `ROADMAP.md` e `STATE.md`
+2. carregar `.specs/codebase/*` so ate ter contexto suficiente
+3. entender o fluxo operacional pelo `README.md`
+4. mudar o minimo que resolve
+5. preservar o desenho atual: local-first, secrets em runtime, Telegram como etapa posterior
+6. preservar e reforcar o modelo de seguranca: segredo fora do versionamento e fora de outputs
+7. registrar novas iniciativas em `.specs/features/` ou `.specs/quick/`
 
 ## Checklist obrigatorio antes de dizer "pronto"
 
